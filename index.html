@@ -1,1 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gemma AI 聊天室</title>
+  <style>
+    * { box-sizing: border-box; }
 
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+      color: #202124;
+      background: #f5f6fa;
+    }
+
+    main {
+      width: min(760px, calc(100% - 32px));
+      margin: 40px auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px #00000012;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 22px 24px;
+      color: white;
+      background: #6558d3;
+    }
+
+    header h1 { margin: 0 0 6px; font-size: 1.4rem; }
+    header p { margin: 0; opacity: .9; font-size: .95rem; }
+
+    #chat {
+      height: min(60vh, 540px);
+      min-height: 300px;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 12px 15px;
+      border-radius: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .user {
+      align-self: flex-end;
+      color: white;
+      background: #6558d3;
+      border-bottom-right-radius: 4px;
+    }
+
+    .assistant {
+      align-self: flex-start;
+      background: #f0f0f5;
+      border-bottom-left-radius: 4px;
+    }
+
+    .system-note {
+      align-self: center;
+      color: #666;
+      font-size: .9rem;
+    }
+
+    form {
+      display: flex;
+      gap: 10px;
+      padding: 16px;
+      border-top: 1px solid #eee;
+    }
+
+    textarea {
+      flex: 1;
+      min-height: 48px;
+      max-height: 140px;
+      resize: vertical;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      font: inherit;
+    }
+
+    button {
+      padding: 0 20px;
+      border: 0;
+      border-radius: 10px;
+      color: white;
+      background: #6558d3;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: .6; cursor: wait; }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0 16px 16px;
+    }
+
+    .clear-button {
+      padding: 8px 12px;
+      color: #444;
+      background: #eee;
+    }
+
+    @media (max-width: 520px) {
+      main { margin: 16px auto; }
+      #chat { height: 55vh; padding: 14px; }
+      form { padding: 12px; }
+      button { padding: 0 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Gemma AI 聊天室</h1>
+      <p>輸入問題，和生成式 AI 對話。</p>
+    </header>
+
+    <section id="chat" aria-live="polite">
+      <div class="message system-note">
+        嗨！我是 Gemma AI。你可以輸入問題開始聊天。
+      </div>
+    </section>
+
+    <form id="chat-form">
+      <textarea id="prompt" placeholder="輸入訊息；按 Enter 傳送，Shift + Enter 換行" required></textarea>
+      <button id="send" type="submit">傳送</button>
+    </form>
+
+    <div class="actions">
+      <button id="clear" class="clear-button" type="button">清除對話</button>
+    </div>
+  </main>
+
+  <script>
+    const chat = document.querySelector("#chat");
+    const form = document.querySelector("#chat-form");
+    const promptInput = document.querySelector("#prompt");
+    const sendButton = document.querySelector("#send");
+    const clearButton = document.querySelector("#clear");
+
+    let messages = [];
+
+    function addMessage(role, text) {
+      const bubble = document.createElement("div");
+      bubble.className = `message ${role}`;
+      bubble.textContent = text;
+      chat.appendChild(bubble);
+      chat.scrollTop = chat.scrollHeight;
+      return bubble;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const text = promptInput.value.trim();
+      if (!text || sendButton.disabled) return;
+
+      addMessage("user", text);
+      messages.push({ role: "user", content: text });
+      promptInput.value = "";
+      sendButton.disabled = true;
+
+      const waitingBubble = addMessage("assistant", "思考中…");
+
+      try {
+        const response = await fetch("/.netlify/functions/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "請求失敗，請稍後再試。");
+        }
+
+        waitingBubble.textContent = data.reply;
+        messages.push({ role: "assistant", content: data.reply });
+      } catch (error) {
+        waitingBubble.textContent = `發生錯誤：${error.message}`;
+        messages.pop();
+      } finally {
+        sendButton.disabled = false;
+        promptInput.focus();
+        chat.scrollTop = chat.scrollHeight;
+      }
+    });
+
+    promptInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      messages = [];
+      chat.innerHTML = '<div class="message system-note">對話已清除。輸入問題即可重新開始。</div>';
+      promptInput.focus();
+    });
+  </script>
+</body>
+</html>
